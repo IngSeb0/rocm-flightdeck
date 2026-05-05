@@ -1,177 +1,188 @@
-# 🚀 ROCm FlightDeck
-
-**Autonomous performance portability for LLM inference on AMD GPUs.**
+# ROCm FlightDeck
 
 ROCm FlightDeck is an open-source AI performance portability agent for AMD GPUs.
-It analyzes CUDA/NVIDIA-first LLM inference repositories, detects ROCm compatibility
-blockers, generates a deterministic ROCm Readiness Score, creates a migration plan,
-generates reviewable ROCm artifacts, and produces a technical migration report.
 
-> **Build in Public** — This project is developed openly as part of the AMD Hackathon.
-> All analysis is deterministic, no LLM reasoning is used for scoring.
+It analyzes CUDA/NVIDIA-first vLLM and PyTorch inference repositories, detects ROCm compatibility blockers, calculates a deterministic ROCm Readiness Score, generates reviewable ROCm migration artifacts, creates a migrated repository copy, re-scores the result, and packages a downloadable migration bundle.
 
----
+ROCm FlightDeck is not a generic CUDA-to-ROCm converter. It is an AI performance portability lab that turns AMD adoption from a risky migration project into a measurable, reviewable engineering workflow.
 
-## What ROCm FlightDeck Does
+## Why This Matters
 
-| Feature | Description |
-|---------|-------------|
-| 📊 ROCm Readiness Score | Deterministic 0–100 score across 5 categories |
-| 🚫 Blocker Detection | Finds CUDA/NVIDIA assumptions in Python, Dockerfiles, requirements |
-| 🗺️ Migration Plan | Ordered, actionable steps for each detected issue |
-| 📁 Artifact Generation | Generates Dockerfile.rocm, requirements-rocm.txt, serve/benchmark scripts |
-| 📋 Technical Report | Full migration_report.md with score breakdown, blockers, and next steps |
+LLM inference repositories are often NVIDIA-first by default: hardcoded `.cuda()` calls, `nvidia/cuda` Docker images, CUDA-only dependencies, and missing ROCm benchmark methodology. Teams evaluating AMD MI300X need a repeatable way to understand migration effort before spending engineering time.
 
-**Focused on:** vLLM / PyTorch LLM inference repositories migrating to AMD ROCm / MI300X.
+ROCm FlightDeck provides that first pass as deterministic static analysis. It does not run untrusted code, does not require internet access, and does not invent benchmark results.
 
----
+## What The MVP Does
 
-## What the MVP Does NOT Do Yet
+- Scans local repositories using safe static file reads.
+- Detects CUDA/NVIDIA assumptions in Python, Dockerfiles, and dependency files.
+- Scores readiness from 0 to 100 using a deterministic rubric.
+- Generates an ordered migration plan.
+- Generates reviewable artifacts:
+  - `Dockerfile.rocm`
+  - `requirements-rocm.txt`
+  - `serve_vllm_rocm.py`
+  - `benchmark_rocm.py`
+  - `README_AMD_MIGRATION.md`
+  - `flightdeck.patch`
+- Creates a migrated copy in `outputs/migrated_repos/<repo>_rocm/`.
+- Re-runs scanner, detectors, and scoring on the migrated copy.
+- Generates `migration_report.md`.
+- Builds `outputs/bundles/<repo>_migration_bundle.zip`.
 
-- ❌ No LLM/Qwen integration for reasoning
-- ❌ No AMD Cloud or remote execution
-- ❌ No real benchmark execution (placeholder methodology only)
-- ❌ Does not run any untrusted repository code
-- ❌ No internet access required
+## What It Does Not Do Yet
 
----
+- Does not execute untrusted repository code.
+- Does not run real benchmarks locally.
+- Does not fabricate latency, throughput, VRAM, or cold-start numbers.
+- Does not require AMD Cloud credentials.
+- Does not call Qwen or external LLM APIs yet.
+- Does not claim generated patches are production-ready.
 
-## How to Run Locally
+Reports and benchmark templates clearly state: `Benchmarks not executed in this MVP.`
 
-### Prerequisites
+## Demo Flow
+
+1. Start the app.
+2. Select one of the controlled demo repositories.
+3. Run analysis.
+4. Review the before ROCm Readiness Score.
+5. Inspect critical blockers and warnings.
+6. Review generated patch and artifacts.
+7. Inspect the migrated repository path.
+8. Compare the after ROCm Readiness Score.
+9. Download the migration bundle.
+10. Use `benchmark_rocm.py` later on AMD Developer Cloud / MI300X to collect real metrics.
+
+## Before / After Example
+
+The default demo is `demo_repos/nvidia_locked_vllm_demo`.
+
+Expected behavior:
+
+- Before score: low, around `20/100`.
+- After score: `85+/100` after safe transformations, legacy preservation, ROCm-first defaults, and generated ROCm artifacts.
+- Bundle: generated at `outputs/bundles/nvidia_locked_vllm_demo_migration_bundle.zip`.
+- Benchmark status: not executed locally.
+
+## Demo Repositories
+
+| Demo Repo | Expected Readiness | Purpose |
+|-----------|--------------------|---------|
+| `nvidia_locked_vllm_demo` | Low, around 20/100 | CUDA-locked baseline with NVIDIA Docker and incompatible dependencies |
+| `partially_portable_pytorch_demo` | Medium, around 55-75/100 | Uses device abstraction but still lacks ROCm artifacts and has one risky dependency |
+| `rocm_ready_vllm_demo` | High, around 85-100/100 | Includes ROCm Dockerfile, ROCm requirements, benchmark methodology, and migration notes |
+
+## Generated Artifacts
+
+Artifacts are written to:
+
+```text
+outputs/patches/<repo_name>/
+```
+
+Migration copies are written to:
+
+```text
+outputs/migrated_repos/<repo_name>_rocm/
+```
+
+Reports are written to:
+
+```text
+outputs/reports/<repo_name>/migration_report.md
+```
+
+Bundles are written to:
+
+```text
+outputs/bundles/<repo_name>_migration_bundle.zip
+```
+
+The bundle includes:
+
+- `Dockerfile.rocm`
+- `requirements-rocm.txt`
+- `serve_vllm_rocm.py`
+- `benchmark_rocm.py`
+- `README_AMD_MIGRATION.md`
+- `migration_report.md`
+- `pull_request_description.md`
+- `flightdeck.patch`
+
+## How To Run Locally
+
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Run the Gradio App
+Launch the Gradio app:
 
 ```bash
 python app/main.py
 ```
 
-Open [http://localhost:7860](http://localhost:7860) in your browser.
+Open:
 
-**Default demo:** `demo_repos/nvidia_locked_vllm_demo`
+```text
+http://localhost:7860
+```
 
-Click **Run Analysis** to see:
-- ROCm Readiness Score
-- Detected blockers and warnings
-- Migration plan
-- Generated ROCm artifacts
-- Full technical report
-
----
-
-## How to Run Tests
+## How To Run Tests
 
 ```bash
 python -m pytest
+python -m compileall .
 ```
 
-Or with verbose output:
+## How To Deploy To Hugging Face Space
 
-```bash
-python -m pytest -v
+1. Create a Hugging Face Space.
+2. Choose SDK: `Gradio`.
+3. Push this repository to the Space.
+4. Keep the root-level `app.py`; it imports the Gradio app from `app/main.py`.
+5. Ensure `requirements.txt` is included.
+6. Keep the controlled demo repositories in `demo_repos/`.
+7. Launch the Space, select a demo repo from the dropdown, and click `Run Analysis`.
+8. Open the `Download Bundle` tab to download the generated migration bundle.
+
+The Space does not need AMD Cloud credentials because it performs static analysis only.
+Benchmarks are not executed locally or inside the Space; run `benchmark_rocm.py` later on AMD Developer Cloud / MI300X.
+
+## Build In Public Strategy
+
+ROCm FlightDeck is designed to produce judge-friendly, shareable outputs:
+
+- A deterministic score.
+- A clear before/after improvement.
+- A reviewable patch.
+- A migrated repository copy.
+- A technical report.
+- A public summary snippet.
+
+Example build-in-public summary:
+
+```text
+Today we migrated a CUDA-first vLLM inference demo repo toward AMD ROCm.
+Before: ROCm Readiness Score 20/100.
+After: ROCm Readiness Score X/100.
+Generated: Dockerfile.rocm, requirements-rocm.txt, serve_vllm_rocm.py,
+benchmark_rocm.py, README_AMD_MIGRATION.md and flightdeck.patch.
+Benchmark status: pending real execution on AMD Developer Cloud / MI300X.
 ```
 
-Expected: all tests pass. Tests cover scanner, detectors, scoring, and patcher.
+## AMD Developer Hackathon Positioning
 
----
+ROCm FlightDeck addresses the adoption gap between NVIDIA-first LLM inference repositories and AMD MI300X deployment. The product does not pretend migration is automatic. It makes migration measurable, reviewable, and easier to validate.
 
-## Demo Flow
+The current MVP is intentionally scoped to vLLM / PyTorch inference repositories because that is a practical, high-value surface for AMD GPU adoption.
 
-1. Start the app: `python app/main.py`
-2. The default repo path points to `demo_repos/nvidia_locked_vllm_demo`
-3. Click **Run Analysis**
-4. Observe:
-   - Score: ~20/100 (intentionally bad demo repo)
-   - 7+ critical blockers (torch.cuda, nvidia/cuda Docker, bitsandbytes, etc.)
-   - A full migration plan with 15 ordered steps
-   - 6 generated artifacts in `outputs/patches/nvidia_locked_vllm_demo/`
-   - A migration report at `outputs/reports/nvidia_locked_vllm_demo/migration_report.md`
+## Roadmap
 
----
-
-## Expected Output
-
-### ROCm Readiness Score
-```
-Total: ~20 / 100
-Device abstraction:        0 / 20  (hardcoded CUDA)
-Dependency compatibility:  0 / 25  (bitsandbytes, flash-attn, xformers, triton)
-Docker/runtime:            0 / 20  (nvidia/cuda base image, no Dockerfile.rocm)
-vLLM serving readiness:   20 / 20  (vllm detected)
-Benchmark readiness:       0 / 15  (no benchmark_rocm.py or README_AMD_MIGRATION.md)
-```
-
-### Generated Files
-```
-outputs/patches/nvidia_locked_vllm_demo/
-├── Dockerfile.rocm
-├── requirements-rocm.txt
-├── serve_vllm_rocm.py
-├── benchmark_rocm.py
-├── README_AMD_MIGRATION.md
-└── flightdeck.patch
-
-outputs/reports/nvidia_locked_vllm_demo/
-└── migration_report.md
-```
-
----
-
-## Project Structure
-
-```
-rocm-flightdeck/
-├── AGENTS.md                         # Agent rules and project scope
-├── README.md
-├── requirements.txt
-├── app/
-│   ├── __init__.py
-│   └── main.py                       # Gradio app
-├── core/
-│   ├── __init__.py
-│   ├── scanner.py                    # File scanner
-│   ├── detectors.py                  # CUDA/NVIDIA pattern detectors
-│   ├── scoring.py                    # ROCm Readiness Score
-│   ├── planner.py                    # Migration plan generator
-│   ├── patcher.py                    # ROCm artifact generator
-│   ├── reporter.py                   # Migration report generator
-│   └── models.py                     # Data models
-├── demo_repos/
-│   └── nvidia_locked_vllm_demo/      # Intentionally NVIDIA-locked demo
-│       ├── app.py
-│       ├── requirements.txt
-│       ├── Dockerfile
-│       └── benchmark.py
-├── outputs/
-│   ├── reports/                      # Generated migration reports
-│   └── patches/                      # Generated ROCm artifacts
-└── tests/
-    ├── __init__.py
-    ├── test_scanner.py
-    ├── test_scoring.py
-    └── test_patcher.py
-```
-
----
-
-## Hackathon Positioning
-
-ROCm FlightDeck addresses a real pain point: developers who want to run LLM inference
-on AMD MI300X face significant migration friction from NVIDIA-first repositories.
-
-This MVP demonstrates:
-- **Deterministic analysis** — no hallucinated scores or fabricated benchmarks
-- **Actionable output** — generates runnable starter files, not just a checklist
-- **Focused scope** — vLLM + PyTorch, the most common LLM inference stack
-- **Build in Public** — fully open-source, hackathon-developed
-
----
-
-## Build in Public
-
-This project is built openly during the AMD Hackathon.
-Follow the development on GitHub: [IngSeb0/rocm-flightdeck](https://github.com/IngSeb0/rocm-flightdeck)
+- Qwen integration for report writing and migration explanations.
+- GitHub PR creation from generated migration artifacts.
+- AMD Developer Cloud benchmark execution.
+- Real MI300X validation with tokens/sec, latency, VRAM usage, cold start time, and test pass rate.
+- Expanded detector coverage for custom CUDA extensions and HIP build paths.

@@ -1,0 +1,8 @@
+# ROCm-ready demo Dockerfile
+FROM rocm/pytorch:latest
+
+WORKDIR /app
+COPY requirements-rocm.txt ./
+RUN pip install --no-cache-dir -r requirements-rocm.txt
+COPY . .
+CMD ["python", "serve_vllm_rocm.py"]

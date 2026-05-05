@@ -312,43 +312,57 @@ docker run --rm \\
     )
 
 
+def _device_hunks(path: str, content: str) -> List[str]:
+    """Build concrete review hunks for common CUDA device assumptions."""
+    lines: List[str] = []
+    replacements = [
+        ('model.to("cuda")', "model.to(device)"),
+        ("model.to('cuda')", "model.to(device)"),
+        ('inputs["input_ids"].cuda()', 'inputs["input_ids"].to(device)'),
+        ("inputs['input_ids'].cuda()", "inputs['input_ids'].to(device)"),
+        ("x = torch.randn(1024, 1024).cuda()", "x = torch.randn(1024, 1024).to(device)"),
+        ("torch.randn(1024, 1024).cuda()", "torch.randn(1024, 1024).to(device)"),
+        (".cuda()", ".to(device)"),
+    ]
+    for old, new in replacements:
+        if old not in content:
+            continue
+        lines.append(f"--- a/{path}\n")
+        lines.append(f"+++ b/{path}\n")
+        lines.append("@@\n")
+        if "device = torch.device" not in content:
+            lines.append("+# ROCm FlightDeck: ROCm PyTorch exposes AMD GPUs through the CUDA-compatible API.\n")
+            lines.append("+# Use a device abstraction so code remains portable across CPU, NVIDIA, and AMD.\n")
+            lines.append('+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")\n')
+        lines.append(f"-{old}\n")
+        lines.append(f"+{new}\n")
+        lines.append("\n")
+    return lines
+
+
 def _flightdeck_patch(scan: ScanResult) -> str:
     """Generate a unified-diff-style patch with suggested changes."""
     lines = [
         _AGENT_HEADER,
-        "# flightdeck.patch — suggested changes for ROCm migration\n",
+        "# flightdeck.patch - reviewable starter changes for ROCm migration\n",
         "# Apply with: patch -p1 < flightdeck.patch\n",
-        "# Review every hunk before applying.\n\n",
+        "# Review every hunk before applying and validate on AMD Developer Cloud / MI300X.\n",
+        "# This patch is not guaranteed production-safe.\n\n",
     ]
 
-    # Find app.py or the first .py file to patch
-    py_files = [p for p in scan.files_scanned if p.endswith(".py")]
-    if py_files:
-        target = py_files[0]
-        lines.append(f"--- a/{target}\n")
-        lines.append(f"+++ b/{target}\n")
-        lines.append("@@ -1,5 +1,10 @@\n")
-        lines.append("+import torch\n")
-        lines.append("+\n")
-        lines.append("+# ROCm FlightDeck: abstract device so code runs on both NVIDIA and AMD\n")
-        lines.append("+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')\n")
-        lines.append("+\n")
-        lines.append(" # ... existing code ...\n")
-        lines.append("-# OLD: model.to('cuda')\n")
-        lines.append("+# NEW: model.to(device)\n")
-        lines.append("\n")
+    for target in [p for p in scan.files_scanned if p.endswith(".py")]:
+        lines.extend(_device_hunks(target, scan.file_contents.get(target, "")))
 
-    # Dockerfile patch
     docker_files = [p for p in scan.files_scanned if "Dockerfile" in p and "rocm" not in p.lower()]
     if docker_files:
         target = docker_files[0]
         lines.append(f"--- a/{target}\n")
         lines.append(f"+++ b/{target}\n")
-        lines.append("@@ -1,2 +1,3 @@\n")
+        lines.append("@@ -1,2 +1,4 @@\n")
         lines.append("-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04\n")
-        lines.append("+# Use Dockerfile.rocm for AMD GPU builds\n")
-        lines.append("+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04  # NVIDIA path\n")
-        lines.append("+# FROM rocm/pytorch:latest                    # AMD ROCm path\n")
+        lines.append("+# Use Dockerfile.rocm for AMD ROCm builds.\n")
+        lines.append("+# Original NVIDIA path preserved for comparison.\n")
+        lines.append("+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04\n")
 
     return "".join(lines)
 

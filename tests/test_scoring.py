@@ -1,45 +1,44 @@
-"""Tests for core/scoring.py."""
+"""Tests for deterministic ROCm Readiness Scoring."""
+
+from __future__ import annotations
 
 import os
 import sys
-
-import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.detectors import run_all_detectors
 from core.models import Detection
 from core.scanner import scan_repo
-from core.scoring import MAX_BENCH, MAX_DEPS, MAX_DEVICE, MAX_DOCKER, MAX_VLLM, compute_score
+from core.scoring import MAX_BENCH, MAX_DEPS, MAX_DEVICE, MAX_DOCKER, MAX_VLLM, assessment_label, compute_score
 
-DEMO_REPO = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "demo_repos",
-    "nvidia_locked_vllm_demo",
-)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def test_score_below_70_for_demo_repo():
-    """The intentionally broken demo repo must score below 70."""
-    scan = scan_repo(DEMO_REPO)
-    detections = run_all_detectors(scan)
-    score = compute_score(detections)
-    assert score.total_score < 70, (
-        f"Expected score < 70 for the NVIDIA-locked demo repo, got {score.total_score}"
-    )
+def _score_demo(name: str):
+    scan = scan_repo(os.path.join(ROOT, "demo_repos", name))
+    return compute_score(run_all_detectors(scan))
+
+
+def test_demo_score_ordering():
+    bad = _score_demo("nvidia_locked_vllm_demo")
+    medium = _score_demo("partially_portable_pytorch_demo")
+    ready = _score_demo("rocm_ready_vllm_demo")
+
+    assert bad.total_score < medium.total_score < ready.total_score
+    assert bad.total_score <= 30
+    assert 55 <= medium.total_score <= 75
+    assert ready.total_score >= 85
 
 
 def test_score_is_deterministic():
-    """Scoring must return the same result on repeated calls."""
-    scan = scan_repo(DEMO_REPO)
-    detections = run_all_detectors(scan)
-    score1 = compute_score(detections)
-    score2 = compute_score(detections)
-    assert score1.total_score == score2.total_score
+    first = _score_demo("nvidia_locked_vllm_demo")
+    second = _score_demo("nvidia_locked_vllm_demo")
+    assert first.total_score == second.total_score
+    assert first.deductions == second.deductions
 
 
 def test_perfect_score_with_no_detections():
-    """With no detections the score should be 100."""
     score = compute_score([])
     assert score.total_score == 100
     assert score.device_abstraction == MAX_DEVICE
@@ -50,8 +49,7 @@ def test_perfect_score_with_no_detections():
 
 
 def test_score_never_goes_below_zero():
-    """No category score should go below zero."""
-    many = [
+    detections = [
         Detection(id="TORCH_CUDA", title="t", severity="critical"),
         Detection(id="DOT_CUDA_CALL", title="t", severity="critical"),
         Detection(id="TO_CUDA", title="t", severity="warning"),
@@ -65,7 +63,7 @@ def test_score_never_goes_below_zero():
         Detection(id="MISSING_README_AMD", title="t", severity="info"),
         Detection(id="VLLM_MISSING", title="t", severity="info"),
     ]
-    score = compute_score(many)
+    score = compute_score(detections)
     assert score.device_abstraction >= 0
     assert score.dependency_compatibility >= 0
     assert score.docker_runtime >= 0
@@ -73,18 +71,27 @@ def test_score_never_goes_below_zero():
     assert score.benchmark_readiness >= 0
 
 
-def test_score_explanation_contains_total():
-    """The explanation string must mention the total score."""
-    scan = scan_repo(DEMO_REPO)
-    detections = run_all_detectors(scan)
-    score = compute_score(detections)
-    assert str(score.total_score) in score.explanation
+def test_deductions_are_explainable():
+    score = compute_score([
+        Detection(
+            id="NVIDIA_DOCKER",
+            title="NVIDIA Docker",
+            severity="critical",
+            file_path="Dockerfile",
+            recommendation="Use Dockerfile.rocm.",
+        )
+    ])
+    assert score.deductions
+    deduction = score.deductions[0]
+    assert deduction["reason"]
+    assert deduction["severity"] == "critical"
+    assert deduction["file"] == "Dockerfile"
+    assert deduction["recommendation"]
 
 
-def test_deductions_list_populated():
-    """Deductions list must be non-empty when there are detections."""
-    detections = [
-        Detection(id="NVIDIA_DOCKER", title="NVIDIA Docker", severity="critical"),
-    ]
-    score = compute_score(detections)
-    assert len(score.deductions) > 0
+def test_assessment_labels():
+    assert assessment_label(20) == "Critical - NVIDIA/CUDA locked"
+    assert assessment_label(45) == "Partial - significant migration required"
+    assert assessment_label(70) == "Reviewable - migration artifacts generated, validation required"
+    assert assessment_label(90) == "ROCm Candidate - ready for MI300X validation"
+    assert assessment_label(100) == "ROCm Ready - no major static blockers detected"
