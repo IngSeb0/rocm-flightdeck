@@ -61,7 +61,7 @@ def scan_repo(repo_path: str) -> ScanResult:
     """
     result = ScanResult(repo_path=repo_path)
 
-    # Canonicalise the root — resolves symlinks and normalises separators
+    # Canonicalize the root — resolves symlinks and normalizes separators
     root = Path(repo_path).resolve()
     if not root.is_dir():
         return result

@@ -382,8 +382,6 @@ def generate_artifacts(scan: ScanResult, output_base: str) -> List[GeneratedArti
     ]
 
     artifacts: List[GeneratedArtifact] = []
-    # Resolve the canonical output base once so we can validate every write path
-    abs_output_base = Path(output_base).resolve()
     for filename, content in artifact_specs:
         out_path = out_dir / filename
         # Confirm the target stays within our intended output directory
