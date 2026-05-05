@@ -37,7 +37,7 @@ class ScoreBreakdown:
     vllm_serving: int = 0                # max 20
     benchmark_readiness: int = 0         # max 15
 
-    deductions: List[str] = field(default_factory=list)
+    deductions: List[Dict[str, str]] = field(default_factory=list)
     explanation: str = ""
 
     @property
@@ -78,3 +78,12 @@ class FlightDeckResult:
     plan: MigrationPlan
     artifacts: List[GeneratedArtifact]
     report_path: str = ""
+    before_score: Optional[ScoreBreakdown] = None
+    after_score: Optional[ScoreBreakdown] = None
+    before_detections: List[Detection] = field(default_factory=list)
+    after_detections: List[Detection] = field(default_factory=list)
+    improvement_points: int = 0
+    migrated_repo_path: str = ""
+    bundle_path: str = ""
+    pr_description_path: str = ""
+    remaining_risks: List[str] = field(default_factory=list)

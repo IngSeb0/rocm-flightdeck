@@ -45,6 +45,19 @@ DEDUCTIONS = {
 }
 
 
+def assessment_label(total: int) -> str:
+    """Return deterministic readiness label for a score total."""
+    if total <= 30:
+        return "Critical - NVIDIA/CUDA locked"
+    if total <= 60:
+        return "Partial - significant migration required"
+    if total <= 80:
+        return "Reviewable - migration artifacts generated, validation required"
+    if total <= 94:
+        return "ROCm Candidate - ready for MI300X validation"
+    return "ROCm Ready - no major static blockers detected"
+
+
 def compute_score(detections: List[Detection]) -> ScoreBreakdown:
     """
     Compute the ROCm Readiness Score from a list of detections.
@@ -58,13 +71,21 @@ def compute_score(detections: List[Detection]) -> ScoreBreakdown:
     vllm = MAX_VLLM
     bench = MAX_BENCH
 
-    deduction_messages: List[str] = []
+    deduction_messages: List[dict[str, str]] = []
     detected_ids = {d.id for d in detections}
 
     for det_id, (category, amount, reason) in DEDUCTIONS.items():
         if det_id not in detected_ids:
             continue
-        deduction_messages.append(f"-{amount} {category}: {reason}")
+        related = next(d for d in detections if d.id == det_id)
+        deduction_messages.append({
+            "points": str(amount),
+            "category": category,
+            "reason": reason,
+            "severity": related.severity,
+            "file": related.file_path or "",
+            "recommendation": related.recommendation,
+        })
         if category == "device_abstraction":
             device = max(0, device - amount)
         elif category == "dependency_compatibility":
@@ -86,14 +107,7 @@ def compute_score(detections: List[Detection]) -> ScoreBreakdown:
     )
 
     total = score.total_score
-    if total >= 80:
-        label = "Good — minor issues remain."
-    elif total >= 60:
-        label = "Fair — several blockers need attention before production migration."
-    elif total >= 40:
-        label = "Poor — significant NVIDIA/CUDA assumptions must be replaced."
-    else:
-        label = "Critical — repository is tightly coupled to NVIDIA/CUDA infrastructure."
+    label = assessment_label(total)
 
     score.explanation = (
         f"Total ROCm Readiness Score: {total}/100. {label} "

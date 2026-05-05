@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from typing import List
 
@@ -23,6 +22,44 @@ def _find_evidence(text: str, pattern: str, context: int = 60) -> str:
     return text[start:end].strip()
 
 
+def _iter_relevant_files(scan: ScanResult, suffixes: tuple[str, ...]):
+    """Yield files whose normalized lowercase path ends with any suffix."""
+    for path, content in scan.file_contents.items():
+        normalized = path.replace("\\", "/").lower()
+        if _is_legacy_path(normalized):
+            continue
+        if normalized.endswith(suffixes):
+            yield path, content
+
+
+def _is_legacy_path(normalized_path: str) -> bool:
+    """Return True for preserved NVIDIA/CUDA legacy files."""
+    return (
+        normalized_path.startswith("legacy/")
+        or ".legacy." in normalized_path
+        or normalized_path.endswith(".legacy")
+        or normalized_path.endswith(".nvidia.legacy")
+    )
+
+
+def _active_lines(text: str) -> str:
+    """Return non-empty, non-comment lines to avoid dependency false positives in docs."""
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def _without_portable_device_abstraction(text: str) -> str:
+    pattern = (
+        r"\w+\s*=\s*torch\.device\(\s*[\"']cuda[\"']\s+if\s+"
+        r"torch\.cuda\.is_available\(\)\s+else\s+[\"']cpu[\"']\s*\)"
+    )
+    return re.sub(pattern, "", text)
+
+
 # ---------------------------------------------------------------------------
 # Individual detectors
 # ---------------------------------------------------------------------------
@@ -30,8 +67,12 @@ def _find_evidence(text: str, pattern: str, context: int = 60) -> str:
 def detect_torch_cuda(scan: ScanResult) -> List[Detection]:
     detections: List[Detection] = []
     pattern = r"torch\.cuda"
-    for path, content in scan.file_contents.items():
-        if re.search(pattern, content):
+    for path, content in _iter_relevant_files(scan, (".py", ".sh", "dockerfile")):
+        normalized = path.replace("\\", "/").lower()
+        if normalized.endswith("benchmark_rocm.py"):
+            continue
+        active_content = _without_portable_device_abstraction(_active_lines(content))
+        if re.search(pattern, active_content):
             detections.append(Detection(
                 id="TORCH_CUDA",
                 title="Hardcoded torch.cuda reference",
@@ -50,7 +91,7 @@ def detect_cuda_call(scan: ScanResult) -> List[Detection]:
     """Detect bare .cuda() tensor/model calls."""
     detections: List[Detection] = []
     pattern = r"\.cuda\(\)"
-    for path, content in scan.file_contents.items():
+    for path, content in _iter_relevant_files(scan, (".py",)):
         if re.search(pattern, content):
             detections.append(Detection(
                 id="DOT_CUDA_CALL",
@@ -71,7 +112,7 @@ def detect_to_cuda(scan: ScanResult) -> List[Detection]:
     """Detect .to('cuda') or .to(\"cuda\") calls."""
     detections: List[Detection] = []
     pattern = r'\.to\(["\']cuda["\']\)'
-    for path, content in scan.file_contents.items():
+    for path, content in _iter_relevant_files(scan, (".py",)):
         if re.search(pattern, content):
             detections.append(Detection(
                 id="TO_CUDA",
@@ -91,29 +132,27 @@ def detect_nvidia_docker(scan: ScanResult) -> List[Detection]:
     """Detect nvidia/cuda base image in Dockerfile."""
     detections: List[Detection] = []
     pattern = r"nvidia/cuda"
-    for path, content in scan.file_contents.items():
-        filename = os.path.basename(path)
-        if "Dockerfile" in filename:
-            if re.search(pattern, content):
-                detections.append(Detection(
-                    id="NVIDIA_DOCKER",
-                    title="NVIDIA CUDA Docker base image",
-                    severity="critical",
-                    file_path=path,
-                    evidence=_find_evidence(content, pattern),
-                    recommendation=(
-                        "Replace with an AMD ROCm base image, e.g. "
-                        "rocm/pytorch:latest or rocm/rocm-terminal. "
-                        "See outputs/patches/<repo>/Dockerfile.rocm for a starter template."
-                    ),
-                ))
+    for path, content in _iter_relevant_files(scan, ("dockerfile",)):
+        if re.search(pattern, _active_lines(content)):
+            detections.append(Detection(
+                id="NVIDIA_DOCKER",
+                title="NVIDIA CUDA Docker base image",
+                severity="critical",
+                file_path=path,
+                evidence=_find_evidence(content, pattern),
+                recommendation=(
+                    "Replace with an AMD ROCm base image, e.g. "
+                    "rocm/pytorch:latest or rocm/rocm-terminal. "
+                    "See outputs/patches/<repo>/Dockerfile.rocm for a starter template."
+                ),
+            ))
     return detections
 
 
 def detect_cuda_home(scan: ScanResult) -> List[Detection]:
     detections: List[Detection] = []
     pattern = r"CUDA_HOME"
-    for path, content in scan.file_contents.items():
+    for path, content in _iter_relevant_files(scan, (".py", ".sh", "dockerfile")):
         if re.search(pattern, content):
             detections.append(Detection(
                 id="CUDA_HOME",
@@ -131,7 +170,7 @@ def detect_cuda_home(scan: ScanResult) -> List[Detection]:
 def detect_nvcc(scan: ScanResult) -> List[Detection]:
     detections: List[Detection] = []
     pattern = r"\bnvcc\b"
-    for path, content in scan.file_contents.items():
+    for path, content in _iter_relevant_files(scan, (".py", ".sh", "dockerfile", ".toml", ".txt")):
         if re.search(pattern, content):
             detections.append(Detection(
                 id="NVCC",
@@ -150,8 +189,8 @@ def detect_nvcc(scan: ScanResult) -> List[Detection]:
 def detect_bitsandbytes(scan: ScanResult) -> List[Detection]:
     detections: List[Detection] = []
     pattern = r"bitsandbytes"
-    for path, content in scan.file_contents.items():
-        if re.search(pattern, content):
+    for path, content in _iter_relevant_files(scan, ("requirements.txt", "pyproject.toml", "setup.py", ".py")):
+        if re.search(pattern, _active_lines(content)):
             detections.append(Detection(
                 id="BITSANDBYTES",
                 title="bitsandbytes dependency (NVIDIA-only quantization)",
@@ -171,8 +210,8 @@ def detect_bitsandbytes(scan: ScanResult) -> List[Detection]:
 def detect_flash_attn(scan: ScanResult) -> List[Detection]:
     detections: List[Detection] = []
     pattern = r"flash[-_]attn|flash_attention"
-    for path, content in scan.file_contents.items():
-        if re.search(pattern, content, re.IGNORECASE):
+    for path, content in _iter_relevant_files(scan, ("requirements.txt", "pyproject.toml", "setup.py", ".py")):
+        if re.search(pattern, _active_lines(content), re.IGNORECASE):
             detections.append(Detection(
                 id="FLASH_ATTN",
                 title="flash-attn dependency (NVIDIA-optimized)",
@@ -191,8 +230,8 @@ def detect_flash_attn(scan: ScanResult) -> List[Detection]:
 def detect_xformers(scan: ScanResult) -> List[Detection]:
     detections: List[Detection] = []
     pattern = r"xformers"
-    for path, content in scan.file_contents.items():
-        if re.search(pattern, content):
+    for path, content in _iter_relevant_files(scan, ("requirements.txt", "pyproject.toml", "setup.py", ".py")):
+        if re.search(pattern, _active_lines(content)):
             detections.append(Detection(
                 id="XFORMERS",
                 title="xformers dependency (NVIDIA-optimized)",
@@ -211,8 +250,8 @@ def detect_xformers(scan: ScanResult) -> List[Detection]:
 def detect_triton(scan: ScanResult) -> List[Detection]:
     detections: List[Detection] = []
     pattern = r"\btriton\b"
-    for path, content in scan.file_contents.items():
-        if re.search(pattern, content):
+    for path, content in _iter_relevant_files(scan, ("requirements.txt", "pyproject.toml", "setup.py", ".py")):
+        if re.search(pattern, _active_lines(content)):
             detections.append(Detection(
                 id="TRITON",
                 title="triton dependency (limited ROCm support)",

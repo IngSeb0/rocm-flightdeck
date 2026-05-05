@@ -220,3 +220,7 @@ __marimo__/
 # ROCm FlightDeck generated outputs (runtime artifacts)
 outputs/patches/*/
 outputs/reports/*/
+outputs/bundles/*/
+outputs/bundles/*.zip
+outputs/migrated_repos/*/
+outputs/test_tmp/*/
