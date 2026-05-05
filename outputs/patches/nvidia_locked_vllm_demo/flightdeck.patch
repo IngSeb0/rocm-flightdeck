@@ -1,0 +1,62 @@
+# =============================================================================
+# AGENT-GENERATED FILE — ROCm FlightDeck starter template
+# Review and adapt before using in production.
+# Original files are NOT modified by this tool.
+# =============================================================================
+# flightdeck.patch - reviewable starter changes for ROCm migration
+# Apply with: patch -p1 < flightdeck.patch
+# Review every hunk before applying and validate on AMD Developer Cloud / MI300X.
+# This patch is not guaranteed production-safe.
+
+--- a/app.py
++++ b/app.py
+@@
++# ROCm FlightDeck: ROCm PyTorch exposes AMD GPUs through the CUDA-compatible API.
++# Use a device abstraction so code remains portable across CPU, NVIDIA, and AMD.
++device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+-model.to("cuda")
++model.to(device)
+
+--- a/app.py
++++ b/app.py
+@@
++# ROCm FlightDeck: ROCm PyTorch exposes AMD GPUs through the CUDA-compatible API.
++# Use a device abstraction so code remains portable across CPU, NVIDIA, and AMD.
++device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+-inputs["input_ids"].cuda()
++inputs["input_ids"].to(device)
+
+--- a/app.py
++++ b/app.py
+@@
++# ROCm FlightDeck: ROCm PyTorch exposes AMD GPUs through the CUDA-compatible API.
++# Use a device abstraction so code remains portable across CPU, NVIDIA, and AMD.
++device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+-.cuda()
++.to(device)
+
+--- a/benchmark.py
++++ b/benchmark.py
+@@
+-x = torch.randn(1024, 1024).cuda()
++x = torch.randn(1024, 1024).to(device)
+
+--- a/benchmark.py
++++ b/benchmark.py
+@@
+-torch.randn(1024, 1024).cuda()
++torch.randn(1024, 1024).to(device)
+
+--- a/benchmark.py
++++ b/benchmark.py
+@@
+-.cuda()
++.to(device)
+
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,2 +1,4 @@
+-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
++# Use Dockerfile.rocm for AMD ROCm builds.
++# Original NVIDIA path preserved for comparison.
++FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04

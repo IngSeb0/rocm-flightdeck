@@ -1,0 +1,8 @@
+torch
+vllm
+bitsandbytes
+flash-attn
+xformers
+triton
+transformers
+accelerate

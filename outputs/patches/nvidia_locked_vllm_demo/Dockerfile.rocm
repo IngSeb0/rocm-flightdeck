@@ -1,0 +1,31 @@
+# =============================================================================
+# AGENT-GENERATED FILE — ROCm FlightDeck starter template
+# Review and adapt before using in production.
+# Original files are NOT modified by this tool.
+# =============================================================================
+
+FROM rocm/pytorch:latest
+# Alternatively: rocm/pytorch:rocm6.1_ubuntu22.04_py3.10_pytorch_2.1.0
+
+LABEL maintainer="your-team"
+LABEL description="ROCm-enabled vLLM inference service (MI300X)"
+
+WORKDIR /app
+
+# System deps
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python deps — ROCm-compatible
+COPY requirements-rocm.txt ./
+RUN pip install --no-cache-dir -r requirements-rocm.txt
+
+COPY . .
+
+# HIP device visibility (adjust for your hardware)
+ENV HIP_VISIBLE_DEVICES=0
+ENV ROCM_HOME=/opt/rocm
+
+CMD ["python", "serve_vllm_rocm.py"]

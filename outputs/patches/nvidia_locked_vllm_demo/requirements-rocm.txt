@@ -1,0 +1,24 @@
+# =============================================================================
+# AGENT-GENERATED FILE — ROCm FlightDeck starter template
+# Review and adapt before using in production.
+# Original files are NOT modified by this tool.
+# =============================================================================
+# ROCm-compatible requirements
+# Install the ROCm PyTorch wheel first:
+#   pip install torch --index-url https://download.pytorch.org/whl/rocm6.1
+#
+# Then install vLLM ROCm build:
+#   pip install vllm  # use the ROCm wheel from vLLM releases
+
+torch  # install via ROCm wheel (see above)
+vllm   # install via ROCm wheel
+
+# Removed NVIDIA-only packages:
+#   bitsandbytes  -> use AWQ/GPTQ or full-precision on MI300X
+#   flash-attn    -> use PyTorch SDPA or flash-attention-rocm fork
+#   xformers      -> not needed for vLLM ROCm
+#   triton        -> use triton-rocm if needed, or composable_kernel
+
+# Other deps
+accelerate
+transformers
