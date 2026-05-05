@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ROCm FlightDeck generated outputs (runtime artifacts)
+outputs/patches/*/
+outputs/reports/*/

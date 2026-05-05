@@ -1,0 +1,28 @@
+# =============================================================================
+# AGENT-GENERATED FILE — ROCm FlightDeck starter template
+# Review and adapt before using in production.
+# Original files are NOT modified by this tool.
+# =============================================================================
+# flightdeck.patch — suggested changes for ROCm migration
+# Apply with: patch -p1 < flightdeck.patch
+# Review every hunk before applying.
+
+--- a/benchmark.py
++++ b/benchmark.py
+@@ -1,5 +1,10 @@
++import torch
++
++# ROCm FlightDeck: abstract device so code runs on both NVIDIA and AMD
++device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
++
+ # ... existing code ...
+-# OLD: model.to('cuda')
++# NEW: model.to(device)
+
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,2 +1,3 @@
+-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
++# Use Dockerfile.rocm for AMD GPU builds
++FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04  # NVIDIA path
++# FROM rocm/pytorch:latest                    # AMD ROCm path
